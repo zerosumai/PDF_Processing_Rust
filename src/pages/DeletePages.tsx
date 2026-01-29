@@ -12,7 +12,7 @@ export default function DeletePages() {
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, deletePages, selectOutputFile } = useTauri();
+  const { selectPdfFiles, getPdfInfo, deletePages, selectOutputFile, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -87,6 +87,8 @@ export default function DeletePages() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -122,8 +124,8 @@ export default function DeletePages() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -137,7 +139,7 @@ export default function DeletePages() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-medium">选择要删除的页面</h3>
               <span className="text-sm text-zinc-500">
-                已选择 {selectedPages.size} 页
+                已选择 <span className="text-rose-400 font-medium">{selectedPages.size}</span> 页
               </span>
             </div>
             <div className="grid grid-cols-8 gap-2">

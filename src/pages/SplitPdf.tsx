@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Scissors, FileText, Plus, Trash2 } from 'lucide-react';
+import { Scissors, FileText, Plus, Trash2, Zap } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import Button from '../components/Button';
 import ResultCard from '../components/ResultCard';
@@ -17,7 +17,7 @@ export default function SplitPdf() {
   const [ranges, setRanges] = useState<SplitRange[]>([{ start: 1, end: 1 }]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, splitPdf, selectOutputDir } = useTauri();
+  const { selectPdfFiles, getPdfInfo, splitPdf, selectOutputDir, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -45,6 +45,16 @@ export default function SplitPdf() {
         end: maxPage,
       },
     ]);
+  };
+
+  // Quick action: split each page into a separate file
+  const handleSplitEachPage = () => {
+    if (!pdfInfo) return;
+    const newRanges = Array.from({ length: pdfInfo.page_count }, (_, i) => ({
+      start: i + 1,
+      end: i + 1,
+    }));
+    setRanges(newRanges);
   };
 
   const handleRemoveRange = (index: number) => {
@@ -113,6 +123,8 @@ export default function SplitPdf() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -149,8 +161,8 @@ export default function SplitPdf() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -163,14 +175,24 @@ export default function SplitPdf() {
           <div className="space-y-4 mb-6">
             <div className="flex items-center justify-between">
               <h3 className="text-white font-medium">分割范围</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleAddRange}
-                icon={<Plus size={16} />}
-              >
-                添加范围
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSplitEachPage}
+                  icon={<Zap size={16} />}
+                >
+                  每页一个文件
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAddRange}
+                  icon={<Plus size={16} />}
+                >
+                  添加范围
+                </Button>
+              </div>
             </div>
 
             {ranges.map((range, index) => {

@@ -6,6 +6,8 @@ export interface PdfInfo {
   file_size: number;
   title: string | null;
   author: string | null;
+  pdf_version: string;
+  is_encrypted: boolean;
 }
 
 export interface ProcessResult {
@@ -61,9 +63,14 @@ export function useTauri() {
   const pdfToImages = async (
     filePath: string,
     outputDir: string,
-    format: string
+    format: string,
+    dpi?: number
   ): Promise<ProcessResult> => {
-    return await invoke('pdf_to_images', { filePath, outputDir, format });
+    return await invoke('pdf_to_images', { filePath, outputDir, format, dpi });
+  };
+
+  const openFolder = async (path: string): Promise<void> => {
+    await invoke('open_folder', { path });
   };
 
   const imagesToPdf = async (
@@ -114,6 +121,25 @@ export function useTauri() {
     return result as string | null;
   };
 
+  // Format file size to human readable string
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  // Copy text to clipboard
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return {
     getPdfInfo,
     mergePdfs,
@@ -124,9 +150,12 @@ export function useTauri() {
     pdfToImages,
     imagesToPdf,
     rotatePages,
+    openFolder,
     selectPdfFiles,
     selectImageFiles,
     selectOutputFile,
     selectOutputDir,
+    formatFileSize,
+    copyToClipboard,
   };
 }

@@ -17,7 +17,8 @@ pub fn run() {
             images_to_pdf,
             get_pdf_info,
             rotate_pages,
-            reorder_pages
+            reorder_pages,
+            open_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

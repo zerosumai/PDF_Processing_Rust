@@ -13,7 +13,7 @@ export default function RotatePdf() {
   const [rotation, setRotation] = useState<90 | 180 | 270>(90);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, rotatePages, selectOutputFile } = useTauri();
+  const { selectPdfFiles, getPdfInfo, rotatePages, selectOutputFile, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -85,6 +85,10 @@ export default function RotatePdf() {
     setResult(null);
   };
 
+  const deselectAll = () => {
+    setSelectedPages(new Set());
+  };
+
   if (result) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -99,6 +103,8 @@ export default function RotatePdf() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -134,8 +140,8 @@ export default function RotatePdf() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -158,15 +164,15 @@ export default function RotatePdf() {
                       : 'bg-[#22222b] border border-transparent hover:border-[#3e3e48]'
                   }`}
                 >
-                  {angle === 90 && <RotateCw className="text-blue-400" size={24} />}
-                  {angle === 180 && <RotateCw className="text-blue-400" size={24} />}
-                  {angle === 270 && <RotateCcw className="text-blue-400" size={24} />}
+                  {angle === 90 && <RotateCw className={rotation === angle ? 'text-blue-400' : 'text-zinc-400'} size={24} />}
+                  {angle === 180 && <RotateCw className={rotation === angle ? 'text-blue-400' : 'text-zinc-400'} size={24} style={{ transform: 'rotate(90deg)' }} />}
+                  {angle === 270 && <RotateCcw className={rotation === angle ? 'text-blue-400' : 'text-zinc-400'} size={24} />}
                   <span
                     className={`text-sm font-medium ${
                       rotation === angle ? 'text-blue-400' : 'text-zinc-400'
                     }`}
                   >
-                    {angle}°
+                    {angle === 90 ? '顺时针 90°' : angle === 180 ? '旋转 180°' : '逆时针 90°'}
                   </span>
                 </button>
               ))}
@@ -177,9 +183,14 @@ export default function RotatePdf() {
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-medium">选择要旋转的页面</h3>
-              <Button variant="ghost" size="sm" onClick={selectAll}>
-                全选
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={selectAll}>
+                  全选
+                </Button>
+                <Button variant="ghost" size="sm" onClick={deselectAll}>
+                  清空
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-8 gap-2">
               {Array.from({ length: pdfInfo?.page_count || 0 }, (_, i) => i + 1).map(

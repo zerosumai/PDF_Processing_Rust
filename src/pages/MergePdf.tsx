@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Merge, Plus, GripVertical } from 'lucide-react';
+import { Merge, Plus, GripVertical, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import Button from '../components/Button';
 import ResultCard from '../components/ResultCard';
@@ -16,7 +16,7 @@ export default function MergePdf() {
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const { selectPdfFiles, mergePdfs, selectOutputFile } = useTauri();
+  const { selectPdfFiles, mergePdfs, selectOutputFile, openFolder, copyToClipboard } = useTauri();
 
   const handleAddFiles = async () => {
     try {
@@ -108,6 +108,10 @@ export default function MergePdf() {
     setDragOverIndex(null);
   };
 
+  const handleClearAll = () => {
+    setFiles([]);
+  };
+
   if (result) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -122,6 +126,8 @@ export default function MergePdf() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -138,6 +144,20 @@ export default function MergePdf() {
 
       {/* File List */}
       <div className="bg-[#1a1a21] rounded-2xl border border-[#2e2e38] overflow-hidden mb-6">
+        {files.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#2e2e38]">
+            <span className="text-sm text-zinc-400">
+              已添加 <span className="text-white font-medium">{files.length}</span> 个文件
+            </span>
+            <button
+              onClick={handleClearAll}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={12} />
+              清空全部
+            </button>
+          </div>
+        )}
         {files.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-[#22222b] flex items-center justify-center mx-auto mb-4">

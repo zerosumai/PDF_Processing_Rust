@@ -32,6 +32,8 @@ pub struct PdfInfo {
     pub file_size: u64,
     pub title: Option<String>,
     pub author: Option<String>,
+    pub pdf_version: String,
+    pub is_encrypted: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,6 +51,12 @@ pub async fn get_pdf_info(file_path: String) -> Result<PdfInfo, PdfError> {
     let doc = Document::load(path)?;
     
     let page_count = doc.get_pages().len();
+    
+    // Get PDF version
+    let pdf_version = doc.version.clone();
+    
+    // Check if encrypted
+    let is_encrypted = doc.trailer.get(b"Encrypt").is_ok();
     
     let title = doc.trailer.get(b"Info")
         .ok()
@@ -76,7 +84,46 @@ pub async fn get_pdf_info(file_path: String) -> Result<PdfInfo, PdfError> {
         file_size: metadata.len(),
         title,
         author,
+        pdf_version,
+        is_encrypted,
     })
+}
+
+/// Open folder in system file explorer
+#[tauri::command]
+pub async fn open_folder(path: String) -> Result<(), PdfError> {
+    let path = Path::new(&path);
+    let folder = if path.is_file() {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| PdfError::InvalidOperation(format!("Failed to open folder: {}", e)))?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| PdfError::InvalidOperation(format!("Failed to open folder: {}", e)))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| PdfError::InvalidOperation(format!("Failed to open folder: {}", e)))?;
+    }
+    
+    Ok(())
 }
 
 /// Merge multiple PDFs into one
@@ -314,17 +361,44 @@ pub async fn compress_pdf(
     })
 }
 
+/// Find pdftoppm executable in common paths
+fn find_pdftoppm() -> Option<String> {
+    // Common paths where pdftoppm might be installed on macOS/Linux
+    let common_paths = [
+        "/opt/homebrew/bin/pdftoppm",      // macOS ARM (Apple Silicon) Homebrew
+        "/usr/local/bin/pdftoppm",          // macOS Intel Homebrew / Linux
+        "/usr/bin/pdftoppm",                // Linux system
+        "/opt/local/bin/pdftoppm",          // MacPorts
+    ];
+    
+    for path in &common_paths {
+        if Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+    
+    // Fallback: try to find in PATH (works if running from terminal)
+    None
+}
+
 /// Convert PDF pages to images
 #[tauri::command]
 pub async fn pdf_to_images(
     file_path: String,
     output_dir: String,
     format: String,
+    dpi: Option<u32>,
 ) -> Result<ProcessResult, PdfError> {
     use std::process::Command;
     
     // Create output directory if it doesn't exist
     fs::create_dir_all(&output_dir)?;
+    
+    // Find pdftoppm executable
+    let pdftoppm_path = find_pdftoppm().unwrap_or_else(|| "pdftoppm".to_string());
+    
+    // Use provided DPI or default to 150
+    let dpi_value = dpi.unwrap_or(150);
     
     // Determine output format flag
     let format_flag = if format.to_lowercase() == "jpg" || format.to_lowercase() == "jpeg" {
@@ -347,27 +421,41 @@ pub async fn pdf_to_images(
     
     let output_prefix = Path::new(&output_dir).join(base_name);
     
-    // Construct command: pdftoppm -<format> -r 200 input.pdf output_prefix
+    // Construct command: pdftoppm -<format> -r <dpi> input.pdf output_prefix
     // Note: pdftoppm automatically adds -1, -2, etc. and extension
-    let status = Command::new("pdftoppm")
+    let status = Command::new(&pdftoppm_path)
         .arg(format_flag)
         .arg("-r")
-        .arg("200")
+        .arg(dpi_value.to_string())
         .arg(&file_path)
         .arg(&output_prefix)
         .status()
-        .map_err(|e| PdfError::InvalidOperation(format!("Failed to execute pdftoppm: {}. Please ensure Poppler is installed and on PATH.", e)))?;
+        .map_err(|e| PdfError::InvalidOperation(format!(
+            "Failed to execute pdftoppm at '{}': {}. Please ensure Poppler is installed (brew install poppler).", 
+            pdftoppm_path, e
+        )))?;
 
     if !status.success() {
         return Err(PdfError::InvalidOperation("pdftoppm failed to convert PDF to images".to_string()));
     }
     
+    // Count output files
+    let file_count = fs::read_dir(&output_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path().extension()
+                .map(|ext_os| ext_os.to_str().unwrap_or("") == ext)
+                .unwrap_or(false)
+        })
+        .count();
+    
     Ok(ProcessResult {
         success: true,
         message: format!(
-            "Successfully converted to {} format images in {}",
+            "成功转换为 {} 张 {} 图片（{}DPI）",
+            file_count,
             ext.to_uppercase(),
-            output_dir
+            dpi_value
         ),
         output_path: Some(output_dir),
     })

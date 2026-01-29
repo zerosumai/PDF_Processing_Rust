@@ -12,7 +12,7 @@ export default function ExtractPages() {
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, extractPages, selectOutputFile } = useTauri();
+  const { selectPdfFiles, getPdfInfo, extractPages, selectOutputFile, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -98,6 +98,8 @@ export default function ExtractPages() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -133,8 +135,8 @@ export default function ExtractPages() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -152,7 +154,7 @@ export default function ExtractPages() {
                   全选
                 </Button>
                 <Button variant="ghost" size="sm" onClick={deselectAll}>
-                  取消全选
+                  清空
                 </Button>
               </div>
             </div>
@@ -174,7 +176,7 @@ export default function ExtractPages() {
               )}
             </div>
             <p className="text-sm text-zinc-500 mt-3">
-              已选择 {selectedPages.size} 页
+              已选择 <span className="text-amber-400 font-medium">{selectedPages.size}</span> 页
             </p>
           </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileImage, Plus, GripVertical, Image } from 'lucide-react';
+import { FileImage, Plus, GripVertical, Image, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import Button from '../components/Button';
 import ResultCard from '../components/ResultCard';
@@ -16,7 +16,7 @@ export default function ImagesToPdf() {
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const { selectImageFiles, imagesToPdf, selectOutputFile } = useTauri();
+  const { selectImageFiles, imagesToPdf, selectOutputFile, openFolder, copyToClipboard } = useTauri();
 
   const handleAddImages = async () => {
     try {
@@ -64,6 +64,10 @@ export default function ImagesToPdf() {
   const handleReset = () => {
     setImages([]);
     setResult(null);
+  };
+
+  const handleClearAll = () => {
+    setImages([]);
   };
 
   const moveImage = (from: number, to: number) => {
@@ -122,6 +126,8 @@ export default function ImagesToPdf() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -138,6 +144,20 @@ export default function ImagesToPdf() {
 
       {/* Image List */}
       <div className="bg-[#1a1a21] rounded-2xl border border-[#2e2e38] overflow-hidden mb-6">
+        {images.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#2e2e38]">
+            <span className="text-sm text-zinc-400">
+              已添加 <span className="text-white font-medium">{images.length}</span> 张图片
+            </span>
+            <button
+              onClick={handleClearAll}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={12} />
+              清空全部
+            </button>
+          </div>
+        )}
         {images.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-[#22222b] flex items-center justify-center mx-auto mb-4">

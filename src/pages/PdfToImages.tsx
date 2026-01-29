@@ -5,14 +5,21 @@ import Button from '../components/Button';
 import ResultCard from '../components/ResultCard';
 import { useTauri, ProcessResult, PdfInfo } from '../hooks/useTauri';
 
+const DPI_OPTIONS = [
+  { value: 72, label: '72 DPI', description: '屏幕显示' },
+  { value: 150, label: '150 DPI', description: '标准质量' },
+  { value: 300, label: '300 DPI', description: '高清打印' },
+];
+
 export default function PdfToImages() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
   const [format, setFormat] = useState<'png' | 'jpg'>('png');
+  const [dpi, setDpi] = useState(150);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, pdfToImages, selectOutputDir } = useTauri();
+  const { selectPdfFiles, getPdfInfo, pdfToImages, selectOutputDir, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -37,7 +44,7 @@ export default function PdfToImages() {
       if (!outputDir) return;
 
       setLoading(true);
-      const res = await pdfToImages(filePath, outputDir, format);
+      const res = await pdfToImages(filePath, outputDir, format, dpi);
       setResult(res);
     } catch (error) {
       setResult({
@@ -55,6 +62,7 @@ export default function PdfToImages() {
     setFileName('');
     setPdfInfo(null);
     setFormat('png');
+    setDpi(150);
     setResult(null);
   };
 
@@ -72,6 +80,8 @@ export default function PdfToImages() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -107,8 +117,8 @@ export default function PdfToImages() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -143,17 +153,40 @@ export default function PdfToImages() {
                     {f}
                   </span>
                   <span className="text-xs text-zinc-600">
-                    {f === 'png' ? '无损压缩' : '有损压缩'}
+                    {f === 'png' ? '无损压缩' : '体积更小'}
                   </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Info */}
-          <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-4 mb-6">
-            <p className="text-green-400 text-sm">
-              <strong>✓</strong> 此功能使用纯 Rust 实现，PDFium 库已自动包含在应用中，无需额外安装。
+          {/* DPI Selection */}
+          <div className="bg-[#1a1a21] rounded-2xl border border-[#2e2e38] p-6 mb-6">
+            <h3 className="text-white font-medium mb-4">图片质量 (DPI)</h3>
+            <div className="flex gap-3">
+              {DPI_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setDpi(option.value)}
+                  className={`flex-1 flex flex-col items-center gap-1 p-4 rounded-xl transition-all ${
+                    dpi === option.value
+                      ? 'bg-pink-500/20 border border-pink-500/40'
+                      : 'bg-[#22222b] border border-transparent hover:border-[#3e3e48]'
+                  }`}
+                >
+                  <span
+                    className={`text-sm font-medium ${
+                      dpi === option.value ? 'text-pink-400' : 'text-zinc-400'
+                    }`}
+                  >
+                    {option.label}
+                  </span>
+                  <span className="text-xs text-zinc-600">{option.description}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-600 mt-3">
+              DPI 越高，图片越清晰，但文件也越大。预计生成 {pdfInfo?.page_count || 0} 张图片。
             </p>
           </div>
 

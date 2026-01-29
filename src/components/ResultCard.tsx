@@ -1,4 +1,5 @@
-import { CheckCircle, XCircle, FolderOpen } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, XCircle, FolderOpen, Copy, Check } from 'lucide-react';
 import Button from './Button';
 
 interface ResultCardProps {
@@ -7,6 +8,7 @@ interface ResultCardProps {
   outputPath?: string;
   onOpenFolder?: () => void;
   onReset?: () => void;
+  onCopyPath?: () => Promise<boolean>;
 }
 
 export default function ResultCard({
@@ -15,7 +17,20 @@ export default function ResultCard({
   outputPath,
   onOpenFolder,
   onReset,
+  onCopyPath,
 }: ResultCardProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (onCopyPath) {
+      const ok = await onCopyPath();
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    }
+  };
+
   return (
     <div
       className={`rounded-2xl p-6 border animate-fade-in ${
@@ -36,7 +51,7 @@ export default function ResultCard({
             <XCircle className="text-red-400" size={24} />
           )}
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h3
             className={`font-semibold ${
               success ? 'text-green-400' : 'text-red-400'
@@ -46,9 +61,24 @@ export default function ResultCard({
           </h3>
           <p className="text-zinc-400 text-sm mt-1">{message}</p>
           {outputPath && (
-            <p className="text-zinc-500 text-xs mt-2 font-mono truncate">
-              {outputPath}
-            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-zinc-500 text-xs font-mono truncate flex-1">
+                {outputPath}
+              </p>
+              {onCopyPath && (
+                <button
+                  onClick={handleCopy}
+                  className="p-1 rounded hover:bg-[#2e2e38] text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0"
+                  title="复制路径"
+                >
+                  {copied ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

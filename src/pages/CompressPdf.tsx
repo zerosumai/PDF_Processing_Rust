@@ -12,7 +12,7 @@ export default function CompressPdf() {
   const [quality, setQuality] = useState(75);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProcessResult | null>(null);
-  const { selectPdfFiles, getPdfInfo, compressPdf, selectOutputFile } = useTauri();
+  const { selectPdfFiles, getPdfInfo, compressPdf, selectOutputFile, openFolder, copyToClipboard, formatFileSize } = useTauri();
 
   const handleSelectFile = async () => {
     try {
@@ -80,6 +80,8 @@ export default function CompressPdf() {
           message={result.message}
           outputPath={result.output_path || undefined}
           onReset={handleReset}
+          onOpenFolder={result.output_path ? () => openFolder(result.output_path!) : undefined}
+          onCopyPath={result.output_path ? () => copyToClipboard(result.output_path!) : undefined}
         />
       </div>
     );
@@ -115,8 +117,8 @@ export default function CompressPdf() {
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium truncate">{fileName}</p>
                 <p className="text-sm text-zinc-500">
-                  共 {pdfInfo?.page_count} 页 ·{' '}
-                  {((pdfInfo?.file_size || 0) / 1024).toFixed(1)} KB
+                  {pdfInfo?.page_count} 页 · {formatFileSize(pdfInfo?.file_size || 0)} · PDF {pdfInfo?.pdf_version}
+                  {pdfInfo?.is_encrypted && <span className="ml-2 text-amber-400">已加密</span>}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSelectFile}>
@@ -151,6 +153,16 @@ export default function CompressPdf() {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Size Info */}
+          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-6">
+            <p className="text-blue-400 text-sm">
+              当前文件大小：<strong>{formatFileSize(pdfInfo?.file_size || 0)}</strong>
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              压缩效果取决于 PDF 内容。包含大量图片的文件压缩效果更明显。
+            </p>
           </div>
 
           {/* Action */}
