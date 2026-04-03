@@ -391,9 +391,71 @@ fn add_candidate_dir(dirs: &mut Vec<PathBuf>, dir: Option<PathBuf>) {
     }
 }
 
+fn pdftoppm_candidate_names() -> &'static [&'static str] {
+    #[cfg(target_os = "windows")]
+    {
+        &["pdftoppm.exe", "pdftoppm.cmd", "pdftoppm.bat", "pdftoppm"]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        &["pdftoppm"]
+    }
+}
+
+fn resolve_pdftoppm_from_dir(dir: &Path) -> Option<PathBuf> {
+    for candidate_name in pdftoppm_candidate_names() {
+        let candidate = dir.join(candidate_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
 fn pdftoppm_search_dirs() -> Vec<PathBuf> {
     let mut dirs = path_directories();
 
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(scoop_root) = env::var_os("SCOOP").map(PathBuf::from) {
+            add_candidate_dir(
+                &mut dirs,
+                Some(scoop_root.join("apps/poppler/current/Library/bin")),
+            );
+            add_candidate_dir(&mut dirs, Some(scoop_root.join("shims")));
+        }
+
+        if let Some(user_profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
+            add_candidate_dir(
+                &mut dirs,
+                Some(user_profile.join("scoop/apps/poppler/current/Library/bin")),
+            );
+            add_candidate_dir(&mut dirs, Some(user_profile.join("scoop/shims")));
+        }
+
+        if let Some(program_data) = env::var_os("ProgramData").map(PathBuf::from) {
+            add_candidate_dir(
+                &mut dirs,
+                Some(program_data.join("scoop/apps/poppler/current/Library/bin")),
+            );
+            add_candidate_dir(&mut dirs, Some(program_data.join("scoop/shims")));
+            add_candidate_dir(&mut dirs, Some(program_data.join("chocolatey/bin")));
+            add_candidate_dir(
+                &mut dirs,
+                Some(program_data.join("chocolatey/lib/poppler/tools")),
+            );
+        }
+
+        for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(program_files) = env::var_os(var).map(PathBuf::from) {
+                add_candidate_dir(&mut dirs, Some(program_files.join("poppler/Library/bin")));
+                add_candidate_dir(&mut dirs, Some(program_files.join("poppler/bin")));
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
     for dir in [
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/opt/homebrew/opt/poppler/bin"),
@@ -412,6 +474,8 @@ fn pdftoppm_search_dirs() -> Vec<PathBuf> {
 
     if let Some(conda_prefix) = env::var_os("CONDA_PREFIX").map(PathBuf::from) {
         add_candidate_dir(&mut dirs, Some(conda_prefix.join("bin")));
+        add_candidate_dir(&mut dirs, Some(conda_prefix.join("Library/bin")));
+        add_candidate_dir(&mut dirs, Some(conda_prefix.join("Scripts")));
     }
 
     dirs
@@ -419,24 +483,46 @@ fn pdftoppm_search_dirs() -> Vec<PathBuf> {
 
 fn resolve_brew_pdftoppm() -> Option<PathBuf> {
     for brew_path in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"] {
-        let output = std::process::Command::new(brew_path)
+        let output = match std::process::Command::new(brew_path)
             .args(["--prefix", "poppler"])
             .output()
-            .ok()?;
+        {
+            Ok(output) => output,
+            Err(_) => continue,
+        };
 
         if !output.status.success() {
             continue;
         }
 
         let prefix = String::from_utf8(output.stdout).ok()?;
-        let candidate = PathBuf::from(prefix.trim()).join("bin/pdftoppm");
-
-        if candidate.is_file() {
+        if let Some(candidate) =
+            resolve_pdftoppm_from_dir(&PathBuf::from(prefix.trim()).join("bin"))
+        {
             return Some(candidate);
         }
     }
 
     None
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_where_pdftoppm() -> Option<PathBuf> {
+    let output = std::process::Command::new("where")
+        .arg("pdftoppm")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .find(|candidate| candidate.is_file())
 }
 
 fn count_generated_image_files(
@@ -648,13 +734,25 @@ pub async fn compress_pdf(
 /// Find pdftoppm executable in likely install locations
 fn find_pdftoppm() -> Option<PathBuf> {
     for dir in pdftoppm_search_dirs() {
-        let candidate = dir.join("pdftoppm");
-        if candidate.is_file() {
+        if let Some(candidate) = resolve_pdftoppm_from_dir(&dir) {
             return Some(candidate);
         }
     }
 
-    resolve_brew_pdftoppm()
+    #[cfg(target_os = "windows")]
+    if let Some(candidate) = resolve_windows_where_pdftoppm() {
+        return Some(candidate);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        return resolve_brew_pdftoppm();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        None
+    }
 }
 
 /// Convert PDF pages to images
@@ -697,13 +795,13 @@ pub async fn pdf_to_images(
         let run_prefix = build_pdf_to_images_prefix(base_name)?;
         let output_prefix = Path::new(&output_dir).join(&run_prefix);
 
-        let status = Command::new(&pdftoppm_path)
+        let output = Command::new(&pdftoppm_path)
             .arg(format_flag)
             .arg("-r")
             .arg(dpi_value.to_string())
             .arg(&file_path)
             .arg(&output_prefix)
-            .status()
+            .output()
             .map_err(|e| {
                 PdfError::InvalidOperation(format!(
                     "Failed to execute pdftoppm at '{}': {}. Install Poppler or add pdftoppm to PATH.",
@@ -712,10 +810,17 @@ pub async fn pdf_to_images(
                 ))
             })?;
 
-        if !status.success() {
-            return Err(PdfError::InvalidOperation(
-                "pdftoppm failed to convert PDF to images".to_string(),
-            ));
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let details = if stderr.is_empty() {
+                "no stderr output".to_string()
+            } else {
+                stderr
+            };
+            return Err(PdfError::InvalidOperation(format!(
+                "pdftoppm failed to convert PDF to images: {}",
+                details
+            )));
         }
 
         let file_count = count_generated_image_files(Path::new(&output_dir), &run_prefix, ext)?;
